@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+    <style>
+        body {
+            background: #000;
+        }
+    </style>
+	<body>
+        <div id="container"><br /><br /><br /><br /><br />Generating world...</div>
+       <div style="position: fixed; top: 3%; width:95%; ">
+            <div style="float: right; ">
+                 <span id='text1' style="display:inline-block;height:30px;width:100px;color:#00ff00;"></span>
+            </div>
+        </div>
+        <script src="r69/three.js"></script>
+        <script src="r69/OrbitControls.js"></script>
+        <script src="r69/stats.min.js"></script>
+        <script src="r69/OBJLoader.js"></script>
+        <script src="r69/Detector.js"></script>
+        <script src="r69/FresnelShader.js"></script>
+        <script src="r69/Mirror.js"></script>
+        <script src="lib/physi.js"></script>
+        <script src="lib/chroma.min.js"></script>
+        <script src="light.js"></script>
+        <script src="myPhysics.js"></script>
+        <script src="wheel.js"></script>
+        <script src="utils.js"></script>
+        <script src="WaterShader.js"></script>
+        <script>
+          (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+          (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+          m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+          })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+        
+          ga('create', 'UA-41066114-1', 'rwoodley.org');
+          ga('send', 'pageview');
+        
+        </script>
+
+		<script>
+
+    if ( ! Detector.webgl ) {
+        Detector.addGetWebGLMessage();
+        document.getElementById( 'container' ).innerHTML = "";
+    }
+
+    var _container, render_stats, physics_stats, _grid;
+    var _camera, _controls, _scene, _renderer, _wheel, _water;
+    var _waterY = -8;
+    var textElement, _shaderMaterial, _sceneCube;
+
+    init();
+
+    _shaderMaterial = doSkyBox(_scene);
+    
+    var _pbox = new physicsBox(_scene, 0, 0, 20, 60, 4, 0.5);
+    
+    var material = 
+        new THREE.MeshPhongMaterial({ 
+            color: 0x333333,
+            shininess: 10,
+            ambient: 0x000000,
+            emissive: 0x111111,
+            specular: 0xeeeeee,
+            side: THREE.DoubleSide 
+        });
+
+    var light = addLight(_scene, material);
+    _wheel = buildWheel(_scene, material);
+    doWater(_scene, light);
+
+    var clock = new THREE.Clock();
+    requestAnimationFrame( render );
+    _scene.simulate();
+
+    function init() {
+        _textElement = document.getElementById('text1');
+        var _sceneCube = new THREE.Scene();
+        Physijs.scripts.worker = 'lib/physijs_worker.js';
+        Physijs.scripts.ammo = 'ammo.js';
+        _scene = new Physijs.Scene();
+
+        _container = document.getElementById( 'container' );
+
+        _camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 20000 );
+
+        _controls = new THREE.OrbitControls( _camera, _container.domElement );
+        //_renderer =  new THREE.WebGLRenderer();
+        _renderer =  new THREE.WebGLRenderer({antialias: true, alpha: true});
+        _renderer.setSize( window.innerWidth, window.innerHeight );
+        document.getElementById( 'container' ).innerHTML = "";
+        _container.appendChild( _renderer.domElement );
+
+        _camera.position.x = 8; _camera.position.y = 7; _camera.position.z = -48;
+        var axes = new THREE.AxisHelper( 5000 );
+        //_scene.add(axes);
+				
+        render_stats = new Stats();
+        render_stats.domElement.style.position = 'absolute';
+        render_stats.domElement.style.top = '1px';
+        render_stats.domElement.style.zIndex = 100;
+        //document.getElementById('container').appendChild(render_stats.domElement);
+    
+        physics_stats = new Stats();
+        physics_stats.domElement.style.position = 'absolute';
+        physics_stats.domElement.style.top = '50px';
+        physics_stats.domElement.style.zIndex = 100;
+        //document.getElementById('container').appendChild(physics_stats.domElement);
+    }
+
+    var _matrix = new THREE.Matrix4();
+    var _tick = 1;
+    var _dropletRotation = 0;
+    function render() {
+        requestAnimationFrame( render );
+        render_stats.update();
+        physics_stats.update();
+        _controls.update( clock.getDelta() );
+        _camera.lookAt(new THREE.Vector3(0,0,0));
+
+        var rotationPerRender = Math.PI/128;
+        _wheel.rotation.z -= rotationPerRender;
+        _dropletRotation += rotationPerRender;
+
+        if (_wheel.rotation.z < 0) _wheel.rotation.z += 2 * Math.PI;
+        doDroplets(_waterY, _wheel.rotation.z, _tick, _scene, _shaderMaterial);
+        //rotateCameraY(_camera, Math.PI/512);
+        //_textElement.innerHTML = "<nobr>(" + Math.floor(_camera.position.x) + "," + Math.floor(_camera.position.y) + ","  + Math.floor(_camera.position.z) + ")</nobr>" ;
+        _scene.simulate(undefined, 1);
+        _renderer.render( _scene, _camera );
+        //_renderer.render( _sceneCube, _camera );
+
+				_water.material.uniforms.time.value += 1.0 / 60.0;
+				_water.render();
+        _grid.position.x -= .06;
+        _tick++;
+        //if (_tick%100 == 0) addSpheres(_scene, scale, 20, 0, 5, 50); 
+    }
+    function doSkyBox(scene) {
+			var cubeMap = new THREE.Texture( [] );
+			cubeMap.format = THREE.RGBFormat;
+			cubeMap.flipY = false;
+
+			var loader = new THREE.ImageLoader();
+			loader.load( 'textures/skybox_angkor.png', function ( image ) {
+				var getSide = function ( x, y ) {
+					var size = 1024;
+					var canvas = document.createElement( 'canvas' );
+					canvas.width = size;
+					canvas.height = size;
+					var context = canvas.getContext( '2d' );
+					context.drawImage( image, - x * size, - y * size );
+					return canvas;
+				};
+
+				cubeMap.image[ 0 ] = getSide( 2, 1 ); // px
+				cubeMap.image[ 1 ] = getSide( 0, 1 ); // nx
+				cubeMap.image[ 2 ] = getSide( 1, 0 ); // py
+				cubeMap.image[ 3 ] = getSide( 1, 2 ); // ny
+				cubeMap.image[ 4 ] = getSide( 1, 1 ); // pz
+				cubeMap.image[ 5 ] = getSide( 3, 1 ); // nz
+				cubeMap.needsUpdate = true;
+
+			} );
+			var cubeShader = THREE.ShaderLib['cube'];
+			cubeShader.uniforms['tCube'].value = cubeMap;
+
+			var skyBoxMaterial = new THREE.ShaderMaterial( {
+				fragmentShader: cubeShader.fragmentShader,
+				vertexShader: cubeShader.vertexShader,
+				uniforms: cubeShader.uniforms,
+				depthWrite: false,
+				side: THREE.BackSide
+			});
+
+			var skyBox = new THREE.Mesh(
+				new THREE.BoxGeometry( 10000, 10000, 10000 ),
+				skyBoxMaterial
+			);
+			
+//			scene.add( skyBox );
+      var shader = THREE.FresnelShader;
+      var uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+      uniforms[ "tCube" ].value = cubeMap;
+      var parameters = { fragmentShader: shader.fragmentShader, vertexShader: shader.vertexShader, uniforms: uniforms };
+      var shaderMaterial = new THREE.ShaderMaterial( parameters );
+      return shaderMaterial;
+    }
+    function doWater(scene, ambientLight) {
+      light = ambientLight;
+      
+      waterNormals = new THREE.ImageUtils.loadTexture( 'textures/waternormals.jpg' );
+      waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping; 
+
+      _water = new THREE.Water( _renderer, _camera, _scene, {
+        textureWidth: 512, 
+        textureHeight: 512,
+        waterNormals: waterNormals,
+        alpha: 	1.0,
+        sunDirection: light.position.clone().normalize(),
+        sunColor: 0x000000,
+        waterColor: 0x000000,
+        distortionScale: 50,		// nice param. how agitated the water
+        eye: _camera.position
+      } );
+      
+      mirrorMesh = new THREE.Mesh(
+        new THREE.PlaneBufferGeometry( 160, 5 ),
+        _water.material
+      );
+
+      mirrorMesh.add( _water );
+      mirrorMesh.rotation.x = - Math.PI * 0.5;
+      mirrorMesh.position.y = _waterY;
+      scene.add( mirrorMesh );
+
+//      var ambientLight = new THREE.AmbientLight(0xffffff);
+//      scene.add(ambientLight);
+
+      _grid = new THREE.GridHelper(600, 20);
+      _grid.setColors( new THREE.Color(0x003333), new THREE.Color(0x003333) );
+      _grid.position.y = _waterY * 1.02;
+      scene.add(_grid);
+
+	    floorMesh = new THREE.Mesh(
+        new THREE.PlaneBufferGeometry( 10000, 10000 ),
+        new THREE.MeshLambertMaterial({color: 0x000})
+      );
+      floorMesh.rotation.x = - Math.PI * 0.5;
+      floorMesh.position.y = -8.3
+      scene.add(floorMesh);
+    }
+</script>
+	</body>
+</html>

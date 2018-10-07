@@ -1,0 +1,14 @@
+to make this work in kiosk mode:
+
+1 - add these lines before the call to animate():
+    _mediaUtils.updateVideoForFileName('tomekaV');
+    _mediaUtils.toggleControlPanel();
+
+2 - Set camera to look at (1,0,0)
+
+3 - Remove axes
+
+4 - RUn refreshMediaIndex.sh and edit malformed files.
+
+
+
